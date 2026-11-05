@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TanStack Table — Dashboard de Gestão (Brian & Guilherme)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React 18 + ReactDOM 18 + TanStack React Table v8 (UMD - funciona direto via file://) -->
+    <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/@tanstack/react-table@8.20.5/build/umd/index.production.js"></script>
+    <!-- Babel para compilar JSX no navegador -->
+    <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+  <body class="bg-slate-950 text-slate-100 antialiased min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useMemo, useEffect } = React
+      const { createRoot } = ReactDOM
+      const {
+        useReactTable,
+        getCoreRowModel,
+        getSortedRowModel,
+        getFilteredRowModel,
+        getPaginationRowModel,
+        flexRender,
+        createColumnHelper,
+      } = ReactTable
+
+      const STORAGE_KEY = 'tanstack_table_produtos_brian_guilherme_v1'
+
+      const PRODUTOS_INICIAIS = [
+        { id: 'PRD-001', nome: 'Teclado Mecânico Sem Fio Keychron K2', categoria: 'Periféricos', preco: 689.90, estoque: 34, vendasMes: 48, status: 'Disponível' },
+        { id: 'PRD-002', nome: 'Mouse Gamer Logitech G Pro X Superlight', categoria: 'Periféricos', preco: 749.00, estoque: 18, vendasMes: 62, status: 'Disponível' },
+        { id: 'PRD-003', nome: 'Monitor Dell UltraSharp 27" 4K USB-C', categoria: 'Monitores', preco: 3499.00, estoque: 4, vendasMes: 15, status: 'Estoque Baixo' },
+        { id: 'PRD-004', nome: 'Placa de Vídeo RTX 4070 Super 12GB', categoria: 'Hardware', preco: 4299.90, estoque: 0, vendasMes: 29, status: 'Esgotado' },
+        { id: 'PRD-005', nome: 'Processador AMD Ryzen 7 7800X3D', categoria: 'Hardware', preco: 2890.00, estoque: 12, vendasMes: 41, status: 'Disponível' },
+        { id: 'PRD-006', nome: 'Headset HyperX Cloud III Wireless', categoria: 'Áudio', preco: 849.90, estoque: 25, vendasMes: 33, status: 'Disponível' },
+        { id: 'PRD-007', nome: 'SSD NVMe Kingston Fury Renegade 2TB', categoria: 'Hardware', preco: 1099.00, estoque: 5, vendasMes: 54, status: 'Estoque Baixo' },
+        { id: 'PRD-008', nome: 'Monitor LG UltraGear 24" 144Hz IPS', categoria: 'Monitores', preco: 1149.00, estoque: 22, vendasMes: 39, status: 'Disponível' },
+        { id: 'PRD-009', nome: 'Roteador TP-Link Archer AX73 Wi-Fi 6', categoria: 'Redes', preco: 629.00, estoque: 14, vendasMes: 19, status: 'Disponível' },
+        { id: 'PRD-010', nome: 'Microfone Condensador Fifine AM8 USB/XLR', categoria: 'Áudio', preco: 379.90, estoque: 0, vendasMes: 45, status: 'Esgotado' },
+        { id: 'PRD-011', nome: 'Memória RAM Corsair Vengeance 32GB DDR5', categoria: 'Hardware', preco: 899.00, estoque: 3, vendasMes: 27, status: 'Estoque Baixo' },
+        { id: 'PRD-012', nome: 'Webcam Logitech Brio 4K Stream Edition', categoria: 'Periféricos', preco: 989.00, estoque: 9, vendasMes: 14, status: 'Disponível' },
+        { id: 'PRD-013', nome: 'Switch Gigabit Gerenciável Ubiquiti UniFi 8 Portas', categoria: 'Redes', preco: 879.00, estoque: 7, vendasMes: 11, status: 'Disponível' },
+        { id: 'PRD-014', nome: 'Monitor Curvo Samsung Odyssey G5 34" UltraWide', categoria: 'Monitores', preco: 2699.00, estoque: 2, vendasMes: 18, status: 'Estoque Baixo' },
+        { id: 'PRD-015', nome: 'Caixa de Som Edifier R1280DB Bluetooth', categoria: 'Áudio', preco: 949.00, estoque: 11, vendasMes: 21, status: 'Disponível' },
+      ]
+
+      const columnHelper = createColumnHelper()
+      const formatadorMoeda = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+
+      function calcularStatus(estoque) {
+        if (estoque <= 0) return 'Esgotado'
+        if (estoque <= 5) return 'Estoque Baixo'
+        return 'Disponível'
+      }
+
+      function App() {
+        // Carrega do localStorage ou usa PRODUTOS_INICIAIS
+        const [dados, setDados] = useState(() => {
+          try {
+            const salvo = localStorage.getItem(STORAGE_KEY)
+            if (salvo) {
+              const parsed = JSON.parse(salvo)
+              if (Array.isArray(parsed)) return parsed
+            }
+          } catch (e) {}
+          return PRODUTOS_INICIAIS
+        })
+
+        // Salva no localStorage sempre que 'dados' mudar
+        useEffect(() => {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(dados))
+          } catch (e) {}
+        }, [dados])
+
+        const [sorting, setSorting] = useState([])
+        const [columnFilters, setColumnFilters] = useState([])
+        const [globalFilter, setGlobalFilter] = useState('')
+        const [columnVisibility, setColumnVisibility] = useState({})
+        const [rowSelection, setRowSelection] = useState({})
+        const [mostrarMenuColunas, setMostrarMenuColunas] = useState(false)
+
+        // Modal de Novo Produto
+        const [modalAberto, setModalAberto] = useState(false)
+        const [novoNome, setNovoNome] = useState('')
+        const [novaCategoria, setNovaCategoria] = useState('Periféricos')
+        const [novoPreco, setNovoPreco] = useState('')
+        const [novoEstoque, setNovoEstoque] = useState('')
+
+        // Modal Rolável de Edição em Lote
+        const [modalEdicaoAberto, setModalEdicaoAberto] = useState(false)
+        const [itensEmEdicao, setItensEmEdicao] = useState([])
+
+        const columns = useMemo(() => [
+          columnHelper.display({
+            id: 'selecao',
+            header: ({ table }) => (
+              <input
+                type="checkbox"
+                checked={table.getIsAllRowsSelected()}
+                onChange={table.getToggleAllRowsSelectedHandler()}
+                className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-indigo-500 cursor-pointer"
+              />
+            ),
+            cell: ({ row }) => (
+              <input
+                type="checkbox"
+                checked={row.getIsSelected()}
+                onChange={row.getToggleSelectedHandler()}
+                className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-indigo-500 cursor-pointer"
+              />
+            ),
+            enableSorting: false,
+            enableHiding: false,
+          }),
+          columnHelper.accessor('id', {
+            header: 'Código',
+            cell: (info) => (
+              <span className="font-mono text-xs font-semibold text-indigo-400 bg-indigo-950/60 px-2 py-1 rounded border border-indigo-800/50">
+                {info.getValue()}
+              </span>
+            ),
+          }),
+          columnHelper.accessor('nome', {
+            header: 'Produto',
+            cell: (info) => <div className="font-medium text-slate-100">{info.getValue()}</div>,
+          }),
+          columnHelper.accessor('categoria', {
+            header: 'Categoria',
+            filterFn: 'equalsString',
+            cell: (info) => (
+              <span className="inline-flex items-center rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-300 border border-slate-700">
+                {info.getValue()}
+              </span>
+            ),
+          }),
+          columnHelper.accessor('preco', {
+            header: 'Preço Unitário',
+            cell: (info) => (
+              <span className="font-semibold text-emerald-400">
+                {formatadorMoeda.format(info.getValue())}
+              </span>
+            ),
+          }),
+          columnHelper.accessor('estoque', {
+            header: 'Estoque',
+            cell: (info) => {
+              const qtd = info.getValue()
+              const cor = qtd === 0 ? 'text-rose-400' : qtd <= 5 ? 'text-amber-400' : 'text-slate-200'
+              return <span className={`font-mono font-medium ${cor}`}>{qtd} un.</span>
+            },
+          }),
+          columnHelper.accessor('vendasMes', {
+            header: 'Vendas (Mês)',
+            cell: (info) => <span className="text-slate-300">{info.getValue()} vendas</span>,
+          }),
+          columnHelper.accessor('status', {
+            header: 'Status',
+            filterFn: 'equalsString',
+            cell: (info) => {
+              const status = info.getValue()
+              const estilos = {
+                'Disponível': 'bg-emerald-950/70 text-emerald-300 border-emerald-700/60',
+                'Estoque Baixo': 'bg-amber-950/70 text-amber-300 border-amber-700/60',
+                'Esgotado': 'bg-rose-950/70 text-rose-300 border-rose-700/60',
+              }
+              return (
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border ${estilos[status]}`}>
+                  {status}
+                </span>
+              )
+            },
+          }),
+        ], [])
+
+        const table = useReactTable({
+          data: dados,
+          columns,
+          getRowId: (row) => row.id,
+          state: { sorting, columnFilters, globalFilter, columnVisibility, rowSelection },
+          onSortingChange: setSorting,
+          onColumnFiltersChange: setColumnFilters,
+          onGlobalFilterChange: setGlobalFilter,
+          onColumnVisibilityChange: setColumnVisibility,
+          onRowSelectionChange: setRowSelection,
+          getCoreRowModel: getCoreRowModel(),
+          getSortedRowModel: getSortedRowModel(),
+          getFilteredRowModel: getFilteredRowModel(),
+          getPaginationRowModel: getPaginationRowModel(),
+          initialState: { pagination: { pageSize: 50 } },
+        })
+
+        const filtroCategoria = table.getColumn('categoria')?.getFilterValue() ?? ''
+        const filtroStatus = table.getColumn('status')?.getFilterValue() ?? ''
+        const idsSelecionados = Object.keys(rowSelection).filter((id) => rowSelection[id])
+        const qtdSelecionados = idsSelecionados.length
+
+        const adicionarProduto = (e) => {
+          e.preventDefault()
+          const precoNum = Number(novoPreco) || 0
+          const estoqueNum = Number(novoEstoque) || 0
+          const statusCalculado = calcularStatus(estoqueNum)
+
+          const maiorNumeroId = dados.reduce((max, p) => {
+            const num = parseInt(String(p.id).replace(/\D/g, ''), 10)
+            return !isNaN(num) && num > max ? num : max
+          }, 0)
+
+          const novoItem = {
+            id: `PRD-${String(maiorNumeroId + 1).padStart(3, '0')}`,
+            nome: novoNome,
+            categoria: novaCategoria,
+            preco: precoNum,
+            estoque: estoqueNum,
+            vendasMes: 0,
+            status: statusCalculado,
+          }
+          setDados((prev) => [novoItem, ...prev])
+          setNovoNome('')
+          setNovoPreco('')
+          setNovoEstoque('')
+          setModalAberto(false)
+        }
+
+        const abrirModalEdicao = () => {
+          const selecionados = dados
+            .filter((p) => rowSelection[p.id])
+            .map((p) => ({ ...p }))
+          setItensEmEdicao(selecionados)
+          setModalEdicaoAberto(true)
+        }
+
+        const atualizarCampoItemEdicao = (id, campo, valor) => {
+          setItensEmEdicao((prev) =>
+            prev.map((item) => {
+              if (item.id !== id) return item
+              const atualizado = { ...item, [campo]: valor }
+              if (campo === 'estoque') {
+                atualizado.status = calcularStatus(Number(valor) || 0)
+              }
+              return atualizado
+            })
+          )
+        }
+
+        const confirmarEdicaoEmLote = (e) => {
+          e.preventDefault()
+          const mapaEditados = new Map(itensEmEdicao.map((p) => [p.id, p]))
+          setDados((prev) => prev.map((item) => mapaEditados.get(item.id) ?? item))
+          setModalEdicaoAberto(false)
+          setRowSelection({})
+        }
+
+        const confirmarExclusaoSelecionados = () => {
+          if (qtdSelecionados === 0) return
+          const conjuntoIds = new Set(idsSelecionados)
+          setDados((prev) => prev.filter((item) => !conjuntoIds.has(item.id)))
+          setRowSelection({})
+        }
+
+        const restaurarDadosOriginais = () => {
+          setDados(PRODUTOS_INICIAIS)
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(PRODUTOS_INICIAIS))
+          setRowSelection({})
+        }
+
+        return (
+          <div className="min-h-screen bg-slate-950 text-slate-100">
+            <header className="border-b border-slate-800 bg-slate-900/60">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-indigo-400">
+                    <span>UniSenac Pelotas • Programação Full Stack</span>
+                    <span>•</span>
+                    <span>Tema #10: TanStack Table</span>
+                  </div>
+                  <h1 className="text-2xl font-bold text-white mt-1">
+                    Dashboard de Gestão de Estoque & Vendas
+                  </h1>
+                  <p className="text-sm text-slate-400">
+                    Integrantes: <strong className="text-slate-200">Brian</strong> e <strong className="text-slate-200">Guilherme</strong> — Prof. Edécio Fernando Iepsen
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={restaurarDadosOriginais}
+                    title="Voltar para os 15 produtos originais"
+                    className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-medium px-3.5 py-2.5 rounded-xl text-xs transition cursor-pointer"
+                  >
+                    🔄 Restaurar Padrão
+                  </button>
+
+                  <button
+                    onClick={() => setModalAberto(true)}
+                    className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2.5 rounded-xl text-sm shadow-lg transition cursor-pointer"
+                  >
+                    + Novo Produto
+                  </button>
+                </div>
+              </div>
+            </header>
+
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+              {/* KPIs */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
+                  <p className="text-xs text-slate-400 uppercase font-medium">Produtos Cadastrados</p>
+                  <p className="text-2xl font-bold text-white mt-1">{dados.length}</p>
+                </div>
+                <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
+                  <p className="text-xs text-slate-400 uppercase font-medium">Valor em Estoque</p>
+                  <p className="text-xl font-bold text-emerald-400 mt-1">
+                    {formatadorMoeda.format(dados.reduce((acc, p) => acc + p.preco * p.estoque, 0))}
+                  </p>
+                </div>
+                <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
+                  <p className="text-xs text-slate-400 uppercase font-medium">Vendas no Mês</p>
+                  <p className="text-2xl font-bold text-sky-400 mt-1">
+                    {dados.reduce((acc, p) => acc + p.vendasMes, 0)} un.
+                  </p>
+                </div>
+                <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
+                  <p className="text-xs text-slate-400 uppercase font-medium">Estoque Baixo / Esgotado</p>
+                  <p className="text-2xl font-bold text-amber-400 mt-1">
+                    {dados.filter((p) => p.estoque <= 5).length} itens
+                  </p>
+                </div>
+              </div>
+
+              {/* Barra de Controles */}
+              <div className="flex flex-col lg:flex-row gap-3 justify-between items-stretch lg:items-center bg-slate-900/90 p-4 rounded-xl border border-slate-800">
+                <input
+                  type="text"
+                  value={globalFilter ?? ''}
+                  onChange={(e) => setGlobalFilter(e.target.value)}
+                  placeholder="🔍 Buscar por nome, código ou categoria..."
+                  className="flex-1 max-w-md px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <select
+                    value={filtroCategoria}
+                    onChange={(e) => table.getColumn('categoria')?.setFilterValue(e.target.value || undefined)}
+                    className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200"
+                  >
+                    <option value="">Todas as Categorias</option>
+                    <option value="Periféricos">Periféricos</option>
+                    <option value="Hardware">Hardware</option>
+                    <option value="Monitores">Monitores</option>
+                    <option value="Áudio">Áudio</option>
+                    <option value="Redes">Redes</option>
+                  </select>
+
+                  <select
+                    value={filtroStatus}
+                    onChange={(e) => table.getColumn('status')?.setFilterValue(e.target.value || undefined)}
+                    className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200"
+                  >
+                    <option value="">Todos os Status</option>
+                    <option value="Disponível">Disponível</option>
+                    <option value="Estoque Baixo">Disponível / Estoque Baixo</option>
+                    <option value="Esgotado">Esgotado</option>
+                  </select>
+
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setMostrarMenuColunas((p) => !p)}
+                      className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg px-3 py-2 text-sm font-medium cursor-pointer"
+                    >
+                      ⚙️ Colunas
+                    </button>
+                    {mostrarMenuColunas && (
+                      <div className="absolute right-0 mt-2 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-xl p-3 z-20 space-y-2">
+                        <div className="text-xs font-semibold text-slate-400 uppercase pb-1 border-b border-slate-800">
+                          Exibir Colunas
+                        </div>
+                        {table.getAllLeafColumns().filter((c) => c.getCanHide()).map((column) => (
+                          <label key={column.id} className="flex items-center gap-2 text-sm text-slate-200 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={column.getIsVisible()}
+                              onChange={column.getToggleVisibilityHandler()}
+                            />
+                            <span>{String(column.columnDef.header)}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {(globalFilter || columnFilters.length > 0 || sorting.length > 0) && (
+                    <button
+                      onClick={() => { setGlobalFilter(''); setColumnFilters([]); setSorting([]); }}
+                      className="bg-rose-950/60 hover:bg-rose-900/70 text-rose-300 border border-rose-800/60 rounded-lg px-3 py-2 text-sm font-medium cursor-pointer"
+                    >
+                      Limpar Filtros
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Barra de Ações em Lote quando há linhas selecionadas */}
+              {qtdSelecionados > 0 && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-indigo-950/60 border border-indigo-700/70 text-indigo-100 px-4 py-3 rounded-xl text-sm shadow-lg">
+                  <div className="flex items-center gap-3">
+                    <span className="bg-indigo-600 text-white font-bold px-2.5 py-0.5 rounded-full text-xs">
+                      {qtdSelecionados}
+                    </span>
+                    <span>
+                      {qtdSelecionados === 1
+                        ? 'produto selecionado para ação'
+                        : 'produtos selecionados para ação em lote'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setRowSelection({})}
+                      className="text-xs font-semibold text-indigo-300 hover:text-white underline cursor-pointer ml-1"
+                    >
+                      Desmarcar todos
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={abrirModalEdicao}
+                      className="inline-flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-3.5 py-1.5 rounded-lg text-xs shadow transition cursor-pointer"
+                    >
+                      ✏️ Editar Selecionados ({qtdSelecionados})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={confirmarExclusaoSelecionados}
+                      className="inline-flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold px-3.5 py-1.5 rounded-lg text-xs shadow transition cursor-pointer"
+                    >
+                      🗑️ Excluir Selecionados ({qtdSelecionados})
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Tabela */}
+              <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900/70 shadow-xl">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    {table.getHeaderGroups().map((headerGroup) => (
+                      <tr key={headerGroup.id} className="border-b border-slate-800 bg-slate-900/90 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        {headerGroup.headers.map((header) => {
+                          const podeOrdenar = header.column.getCanSort()
+                          const direcao = header.column.getIsSorted()
+                          return (
+                            <th key={header.id} className="px-4 py-3.5 select-none">
+                              <div
+                                onClick={header.column.getToggleSortingHandler()}
+                                className={`inline-flex items-center gap-1.5 ${podeOrdenar ? 'cursor-pointer hover:text-indigo-400' : ''}`}
+                              >
+                                {flexRender(header.column.columnDef.header, header.getContext())}
+                                {podeOrdenar && (
+                                  <span className="text-indigo-400">
+                                    {direcao === 'asc' ? '▲' : direcao === 'desc' ? '▼' : '↕'}
+                                  </span>
+                                )}
+                              </div>
+                            </th>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/70 text-sm">
+                    {table.getRowModel().rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={table.getVisibleLeafColumns().length} className="px-4 py-12 text-center text-slate-400">
+                          Nenhum produto encontrado para os filtros aplicados.
+                        </td>
+                      </tr>
+                    ) : (
+                      table.getRowModel().rows.map((row) => (
+                        <tr key={row.id} className={row.getIsSelected() ? 'bg-indigo-950/30' : 'hover:bg-slate-800/50'}>
+                          {row.getVisibleCells().map((cell) => (
+                            <td key={cell.id} className="px-4 py-3.5 whitespace-nowrap">
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Paginação */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-900/90 px-4 py-3 rounded-xl border border-slate-800 text-sm text-slate-300">
+                <div className="flex items-center gap-3">
+                  <span>
+                    Exibindo <strong className="text-white">{table.getRowModel().rows.length}</strong> de{' '}
+                    <strong className="text-white">{table.getFilteredRowModel().rows.length}</strong> registros
+                  </span>
+                  <select
+                    value={table.getState().pagination.pageSize}
+                    onChange={(e) => table.setPageSize(Number(e.target.value))}
+                    className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200"
+                  >
+                    <option value={50}>Mostrar Todos</option>
+                    <option value={5}>5 por página</option>
+                    <option value={10}>10 por página</option>
+                    <option value={15}>15 por página</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 mr-2">
+                    Página <strong className="text-white">{table.getState().pagination.pageIndex + 1}</strong> de{' '}
+                    <strong className="text-white">{table.getPageCount() || 1}</strong>
+                  </span>
+                  <button onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()} className="px-2.5 py-1 rounded border border-slate-700 bg-slate-800 disabled:opacity-40 cursor-pointer">«</button>
+                  <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} className="px-2.5 py-1 rounded border border-slate-700 bg-slate-800 disabled:opacity-40 cursor-pointer">‹</button>
+                  <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} className="px-2.5 py-1 rounded border border-slate-700 bg-slate-800 disabled:opacity-40 cursor-pointer">›</button>
+                  <button onClick={() => table.setPageIndex(table.getPageCount() - 1)} disabled={!table.getCanNextPage()} className="px-2.5 py-1 rounded border border-slate-700 bg-slate-800 disabled:opacity-40 cursor-pointer">»</button>
+                </div>
+              </div>
+            </main>
+
+            {/* Modal para Cadastrar Novo Produto */}
+            {modalAberto && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+                <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4">
+                  <h2 className="text-lg font-bold text-white">Cadastrar Novo Produto</h2>
+                  <form onSubmit={adicionarProduto} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1">Nome do Produto</label>
+                      <input type="text" required value={novoNome} onChange={(e) => setNovoNome(e.target.value)} placeholder="Ex: SSD Samsung 990 Pro 1TB" className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-400 mb-1">Categoria</label>
+                      <select value={novaCategoria} onChange={(e) => setNovaCategoria(e.target.value)} className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white">
+                        <option value="Periféricos">Periféricos</option>
+                        <option value="Hardware">Hardware</option>
+                        <option value="Monitores">Monitores</option>
+                        <option value="Áudio">Áudio</option>
+                        <option value="Redes">Redes</option>
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Preço (R$)</label>
+                        <input type="number" step="0.01" required value={novoPreco} onChange={(e) => setNovoPreco(e.target.value)} placeholder="499.90" className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Estoque (un.)</label>
+                        <input type="number" required value={novoEstoque} onChange={(e) => setNovoEstoque(e.target.value)} placeholder="15" className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-sm text-white" />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button type="button" onClick={() => setModalAberto(false)} className="px-4 py-2 rounded-lg text-sm text-slate-300 hover:bg-slate-800 cursor-pointer">Cancelar</button>
+                      <button type="submit" className="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer">Salvar Produto</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Rolável de Edição em Lote (para 1 ou vários produtos selecionados) */}
+            {modalEdicaoAberto && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+                <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl">
+                  <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-bold text-white">
+                        Editar Produtos Selecionados ({itensEmEdicao.length})
+                      </h2>
+                      <p className="text-xs text-slate-400">
+                        Role para baixo para visualizar e alterar todos os itens marcados. Tudo fica salvo automaticamente no navegador.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setModalEdicaoAberto(false)}
+                      className="text-slate-400 hover:text-white text-sm px-2 py-1 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <form onSubmit={confirmarEdicaoEmLote} className="flex flex-col flex-1 overflow-hidden">
+                    <div className="p-6 overflow-y-auto space-y-5 flex-1">
+                      {itensEmEdicao.map((item, index) => (
+                        <div key={item.id} className="bg-slate-950/90 border border-slate-800 rounded-xl p-4 space-y-3">
+                          <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                            <span className="font-mono text-xs font-semibold text-indigo-400 bg-indigo-950/70 px-2.5 py-1 rounded border border-indigo-800/50">
+                              #{index + 1} • {item.id}
+                            </span>
+                            <span className="text-xs text-slate-400">
+                              Status calculado: <strong className="text-slate-200">{item.status}</strong>
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="sm:col-span-2">
+                              <label className="block text-xs font-medium text-slate-400 mb-1">Nome do Produto</label>
+                              <input
+                                type="text"
+                                required
+                                value={item.nome}
+                                onChange={(e) => atualizarCampoItemEdicao(item.id, 'nome', e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-slate-400 mb-1">Categoria</label>
+                              <select
+                                value={item.categoria}
+                                onChange={(e) => atualizarCampoItemEdicao(item.id, 'categoria', e.target.value)}
+                                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
+                              >
+                                <option value="Periféricos">Periféricos</option>
+                                <option value="Hardware">Hardware</option>
+                                <option value="Monitores">Monitores</option>
+                                <option value="Áudio">Áudio</option>
+                                <option value="Redes">Redes</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-slate-400 mb-1">Preço Unitário (R$)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                required
+                                value={item.preco}
+                                onChange={(e) => atualizarCampoItemEdicao(item.id, 'preco', Number(e.target.value))}
+                                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-slate-400 mb-1">Estoque (unidades)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                required
+                                value={item.estoque}
+                                onChange={(e) => atualizarCampoItemEdicao(item.id, 'estoque', Number(e.target.value))}
+                                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-slate-400 mb-1">Vendas no Mês</label>
+                              <input
+                                type="number"
+                                min="0"
+                                required
+                                value={item.vendasMes}
+                                onChange={(e) => atualizarCampoItemEdicao(item.id, 'vendasMes', Number(e.target.value))}
+                                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="px-6 py-4 border-t border-slate-800 bg-slate-900/95 flex items-center justify-end gap-2.5 rounded-b-2xl">
+                      <button
+                        type="button"
+                        onClick={() => setModalEdicaoAberto(false)}
+                        className="px-4 py-2 rounded-lg text-sm text-slate-300 hover:bg-slate-800 cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 rounded-lg text-sm font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 shadow cursor-pointer"
+                      >
+                        Salvar Alterações ({itensEmEdicao.length})
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      }
+
+      createRoot(document.getElementById('root')).render(<App />)
+    </script>
+  </body>
+</html>
